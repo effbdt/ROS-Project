@@ -95,6 +95,12 @@ class ObstacleAvoidanceNode(Node):
             ranges, msg, -math.pi / 2, -math.pi / 6
         )
 
+        self.get_logger().info(
+            f'Front: {front_distance:.2f} m, '
+            f'Left: {left_distance:.2f} m, '
+            f'Right: {right_distance:.2f} m'
+        )
+
         # Create movement command
         command = TwistStamped()
 
