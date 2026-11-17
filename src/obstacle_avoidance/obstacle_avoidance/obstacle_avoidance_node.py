@@ -18,6 +18,8 @@ class ObstacleAvoidanceNode(Node):
         self.declare_parameter('forward_speed', 0.15)
         self.declare_parameter('turn_speed', 0.6)
 
+        self.turn_direction = 0.0
+
         self.safe_distance = self.get_parameter(
             'safe_distance'
         ).value
@@ -114,6 +116,14 @@ class ObstacleAvoidanceNode(Node):
 
         elif front_distance < self.safe_distance:
 
+            #Choose direction when obstacle is detected
+            if (self.turn_direction == 0.0):
+
+                if(left_distance > right_distance):
+                    self.turn_direction = 1.0
+                else:
+                    self.turn_direction = -1.0
+
             # Calculate turning intensity based on obstacle distance
             obstacle_proximity = (
                 self.safe_distance - front_distance
@@ -127,13 +137,11 @@ class ObstacleAvoidanceNode(Node):
 
             #Move slowly while turning
             command.twist.linear.x = self.forward_speed * 0.3
-
-            if(left_distance > right_distance):
-                command.twist.angular.z = adaptive_turn_speed
-            else:
-                command.twist.angular.z = -adaptive_turn_speed
+            command.twist.angular.z = adaptive_turn_speed * self.turn_direction
 
         else:
+            self.turn_direction = 0.0
+
             # Move forward
             command.twist.linear.x = self.forward_speed
             command.twist.angular.z = 0.0
