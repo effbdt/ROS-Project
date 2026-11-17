@@ -17,6 +17,7 @@ class ObstacleAvoidanceNode(Node):
         self.declare_parameter('emergency_distance', 0.25)
         self.declare_parameter('forward_speed', 0.15)
         self.declare_parameter('turn_speed', 0.6)
+        self.declare_parameter('minimum_size_clearance', 0.4)
 
         #Robot states
         self.FORWARD = 0
@@ -43,6 +44,10 @@ class ObstacleAvoidanceNode(Node):
 
         self.turn_speed = self.get_parameter(
             'turn_speed'
+        ).value
+
+        self.minimum_size_clearance = self.get_parameter(
+            'minimum_size_clearance'
         ).value
 
         # Subscribe to LiDAR data
@@ -90,6 +95,7 @@ class ObstacleAvoidanceNode(Node):
         return min(sector_ranges, default=msg.range_max)
 
     def choose_best_direction(self, far_left, left, right, far_right):
+
         directions = {
             'far_left': far_left,
             'left': left,
@@ -97,11 +103,18 @@ class ObstacleAvoidanceNode(Node):
             'far_right': far_right
         }
 
-        best_direction = max(
-            directions, key=directions.get
-        )
+        safe_directions = {
+            direction: distance
+            for direction, distance in directions.items()
+            if distance >= self.minimum_size_clearance
+        }
 
-        return best_direction
+        if not safe_directions:
+            return None
+
+        return max(
+            safe_directions, key=safe_directions.get
+        )
 
     def get_turn_direction(self, direction):
 
@@ -177,7 +190,10 @@ class ObstacleAvoidanceNode(Node):
                     far_right_distance
                 )
 
-                self.turn_direction = self.get_turn_direction(best_direction)
+                if(best_direction is not None):
+                    self.turn_direction = self.get_turn_direction(best_direction)
+                else:
+                    self.current_state = self.EMERGENCY_STOP
                 
                 self.current_state = self.TURNING
 
