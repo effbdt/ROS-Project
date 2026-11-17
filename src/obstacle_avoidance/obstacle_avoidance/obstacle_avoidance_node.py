@@ -18,7 +18,16 @@ class ObstacleAvoidanceNode(Node):
         self.declare_parameter('forward_speed', 0.15)
         self.declare_parameter('turn_speed', 0.6)
 
+        #Robot states
+        self.FORWARD = 0
+        self.TURNING = 1
+        self.EMERGENCY_STOP = 2
+
+        self.current_state = self.FORWARD
         self.turn_direction = 0.0
+
+        #Distance required before resuming forward movement after turning
+        self.clear_distance = 0.8
 
         self.safe_distance = self.get_parameter(
             'safe_distance'
@@ -110,39 +119,43 @@ class ObstacleAvoidanceNode(Node):
 
         if front_distance < self.emergency_distance:
 
-            # Emergency stop
-            command.twist.linear.x = 0.0
-            command.twist.angular.z = 0.0
+            self.current_state = self.EMERGENCY_STOP
 
-        elif front_distance < self.safe_distance:
+        elif self.current_state == self.EMERGENCY_STOP:
 
-            #Choose direction when obstacle is detected
-            if (self.turn_direction == 0.0):
+            if (front_distance >= self.emergency_distance + 0.1):
+                self.current_state = self.TURNING
+        
+        elif (self.current_state == self.FORWARD):
+
+            if(front_distance < self.safe_distance):
 
                 if(left_distance > right_distance):
                     self.turn_direction = 1.0
                 else:
                     self.turn_direction = -1.0
+                
+                self.current_state = self.TURNING
 
-            # Calculate turning intensity based on obstacle distance
-            obstacle_proximity = (
-                self.safe_distance - front_distance
-            ) / (
-                self.safe_distance - self.emergency_distance
-            )
+        elif(self.current_state == self.TURNING):
 
-            obstacle_proximity = max(0.0, min(1.0, obstacle_proximity))
+            if(front_distance >= self.clear_distance):
 
-            adaptive_turn_speed = self.turn_speed * obstacle_proximity
+                self.current_state = self.FORWARD
+                self.turn_direction = 0.0
+        
+        if(self.current_state == self.EMERGENCY_STOP):
 
-            #Move slowly while turning
-            command.twist.linear.x = self.forward_speed * 0.3
-            command.twist.angular.z = adaptive_turn_speed * self.turn_direction
+            command.twist.linear.x = 0.0
+            command.twist.angular.z = 0.0
+
+        elif(self.current_state == self.TURNING):
+
+            command.twist.linear.x = self.forward_speed *0.3
+            command.twist.angular.z = self.turn_direction *self.turn_speed
 
         else:
-            self.turn_direction = 0.0
 
-            # Move forward
             command.twist.linear.x = self.forward_speed
             command.twist.angular.z = 0.0
 
