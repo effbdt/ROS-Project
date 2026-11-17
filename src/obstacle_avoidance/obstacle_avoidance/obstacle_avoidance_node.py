@@ -89,6 +89,33 @@ class ObstacleAvoidanceNode(Node):
 
         return min(sector_ranges, default=msg.range_max)
 
+    def choose_best_direction(self, far_left, left, right, far_right):
+        directions = {
+            'far_left': far_left,
+            'left': left,
+            'right': right,
+            'far_right': far_right
+        }
+
+        best_direction = max(
+            directions, key=directions.get
+        )
+
+        return best_direction
+
+    def get_turn_direction(self, direction):
+
+        direction_mapping = {
+            'far_left': 1.0,
+            'left': 1.0,
+            'straight': 0.0,
+            'right': -1.0,
+            'far_right': -1.0
+        }
+
+        return direction_mapping[direction]
+
+
     def scan_callback(self, msg):
 
         ranges = msg.ranges
@@ -125,7 +152,6 @@ class ObstacleAvoidanceNode(Node):
             f'Far Right: {far_right_distance:.2f} m'
         )
 
-
         # Create movement command
         command = TwistStamped()
 
@@ -144,10 +170,14 @@ class ObstacleAvoidanceNode(Node):
 
             if(front_distance < self.safe_distance):
 
-                if(left_space > right_space):
-                    self.turn_direction = 1.0
-                else:
-                    self.turn_direction = -1.0
+                best_direction = self.choose_best_direction(
+                    far_left_distance,
+                    left_distance,
+                    right_distance,
+                    far_right_distance
+                )
+
+                self.turn_direction = self.get_turn_direction(best_direction)
                 
                 self.current_state = self.TURNING
 
