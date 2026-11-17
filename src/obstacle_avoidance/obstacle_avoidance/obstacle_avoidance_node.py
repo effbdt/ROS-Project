@@ -93,24 +93,38 @@ class ObstacleAvoidanceNode(Node):
 
         ranges = msg.ranges
 
-        # Divide LiDAR measurements into three sectors
+        # Divide LiDAR measurements into five sectors
+        far_left_distance = self.get_sector_distance(
+            ranges, msg, math.pi / 3, math.pi / 2
+        )
+
+        left_distance = self.get_sector_distance(
+            ranges, msg, math.pi / 6, math.pi / 3
+        )
+
         front_distance = self.get_sector_distance(
             ranges, msg, -math.pi / 6, math.pi / 6
         )
 
-        left_distance = self.get_sector_distance(
-            ranges, msg, math.pi / 6, math.pi / 2
+        right_distance = self.get_sector_distance(
+            ranges, msg, -math.pi / 3, -math.pi / 6
         )
 
-        right_distance = self.get_sector_distance(
-            ranges, msg, -math.pi / 2, -math.pi / 6
+        far_right_distance = self.get_sector_distance(
+            ranges, msg, -math.pi / 2, -math.pi / 3
         )
+
+        left_space = min(left_distance, far_left_distance)
+        right_space = min(right_distance, far_right_distance)
 
         self.get_logger().info(
-            f'Front: {front_distance:.2f} m, '
-            f'Left: {left_distance:.2f} m, '
-            f'Right: {right_distance:.2f} m'
+            f'Far Left: {far_left_distance:.2f} m | '
+            f'Left: {left_distance:.2f} m | '
+            f'Front: {front_distance:.2f} m | '
+            f'Right: {right_distance:.2f} m | '
+            f'Far Right: {far_right_distance:.2f} m'
         )
+
 
         # Create movement command
         command = TwistStamped()
@@ -130,7 +144,7 @@ class ObstacleAvoidanceNode(Node):
 
             if(front_distance < self.safe_distance):
 
-                if(left_distance > right_distance):
+                if(left_space > right_space):
                     self.turn_direction = 1.0
                 else:
                     self.turn_direction = -1.0
