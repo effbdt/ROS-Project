@@ -18,6 +18,7 @@ class ObstacleAvoidanceNode(Node):
         self.declare_parameter('forward_speed', 0.15)
         self.declare_parameter('turn_speed', 0.6)
         self.declare_parameter('minimum_size_clearance', 0.4)
+        self.declare_parameter('candidate_clearance', 0.35)
 
         #Robot states
         self.FORWARD = 0
@@ -48,6 +49,10 @@ class ObstacleAvoidanceNode(Node):
 
         self.minimum_size_clearance = self.get_parameter(
             'minimum_size_clearance'
+        ).value
+
+        self.candidate_clearance = self.get_parameter(
+            'candidate_clearance'
         ).value
 
         # Subscribe to LiDAR data
@@ -94,39 +99,53 @@ class ObstacleAvoidanceNode(Node):
 
         return min(sector_ranges, default=msg.range_max)
 
-    def choose_best_direction(self, far_left, left, right, far_right):
+    def evaluate_trajectories(self, msg):
 
-        directions = {
-            'far_left': far_left,
-            'left': left,
-            'right': right,
-            'far_right': far_right
-        }
+        candidate_angles = [
+            math.radians(-60),
+            math.radians(-40),
+            math.radians(-20),
+            math.radians(0),
+            math.radians(20),
+            math.radians(40),
+            math.radians(60)
+        ]
 
-        safe_directions = {
-            direction: distance
-            for direction, distance in directions.items()
-            if distance >= self.minimum_size_clearance
-        }
+        best_angle = None
+        best_score = float('-inf')
 
-        if not safe_directions:
-            return None
+        for candidate_angle in candidate_angles:
 
-        return max(
-            safe_directions, key=safe_directions.get
-        )
+            half_width = math.radians(10)
 
-    def get_turn_direction(self, direction):
+            min_distance = self.get_sector_distance(
+                msg.ranges,
+                msg,
+                candidate_angle - half_width,
+                candidate_angle + half_width 
+            )
 
-        direction_mapping = {
-            'far_left': 1.0,
-            'left': 1.0,
-            'straight': 0.0,
-            'right': -1.0,
-            'far_right': -1.0
-        }
+            #Reject the unsafe candidates
+            if(min_distance < self.candidate_clearance):
+                continue
 
-        return direction_mapping[direction]
+            score = min_distance
+
+            if(score > best_score):
+                best_score = score
+                best_angle = candidate_angle
+
+        return best_angle
+
+    def angle_to_turn_direction(self, angle):
+
+        if angle > 0:
+            return 1.0
+
+        elif angle < 0:
+            return -1.0
+
+        return 0.0
 
 
     def scan_callback(self, msg):
@@ -183,16 +202,19 @@ class ObstacleAvoidanceNode(Node):
 
             if(front_distance < self.safe_distance):
 
-                best_direction = self.choose_best_direction(
-                    far_left_distance,
-                    left_distance,
-                    right_distance,
-                    far_right_distance
-                )
+                best_angle = self.evaluate_trajectories(msg)
 
-                if(best_direction is not None):
-                    self.turn_direction = self.get_turn_direction(best_direction)
+                if(best_angle is not None and best_angle != 0.0):
+
+                    self.turn_direction = self.angle_to_turn_direction(best_angle)
+                
+                elif(best_angle == 0.0):
+
+                    self.current_state = self.FORWARD
+                    self.turn_direction = 0.0
+                
                 else:
+
                     self.current_state = self.EMERGENCY_STOP
                 
                 self.current_state = self.TURNING
