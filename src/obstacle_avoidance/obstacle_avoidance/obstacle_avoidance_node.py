@@ -19,6 +19,7 @@ class ObstacleAvoidanceNode(Node):
         self.declare_parameter('turn_speed', 0.6)
         self.declare_parameter('minimum_size_clearance', 0.4)
         self.declare_parameter('candidate_clearance', 0.35)
+        self.declare_parameter('steering_gain', 1.5)
 
         #Robot states
         self.FORWARD = 0
@@ -53,6 +54,10 @@ class ObstacleAvoidanceNode(Node):
 
         self.candidate_clearance = self.get_parameter(
             'candidate_clearance'
+        ).value
+
+        self.steering_gain = self.get_parameter(
+            'steering_gain'
         ).value
 
         # Subscribe to LiDAR data
@@ -125,6 +130,11 @@ class ObstacleAvoidanceNode(Node):
                 candidate_angle + half_width 
             )
 
+            self.get_logger().info(
+                f'Candidate angle: {math.degrees(candidate_angle):.2f} degrees | '
+                f'Min distance: {min_distance:.2f} m'
+            )
+
             #Reject the unsafe candidates
             if(min_distance < self.candidate_clearance):
                 continue
@@ -136,17 +146,6 @@ class ObstacleAvoidanceNode(Node):
                 best_angle = candidate_angle
 
         return best_angle
-
-    def angle_to_turn_direction(self, angle):
-
-        if angle > 0:
-            return 1.0
-
-        elif angle < 0:
-            return -1.0
-
-        return 0.0
-
 
     def scan_callback(self, msg):
 
@@ -176,17 +175,16 @@ class ObstacleAvoidanceNode(Node):
         left_space = min(left_distance, far_left_distance)
         right_space = min(right_distance, far_right_distance)
 
-        self.get_logger().info(
-            f'Far Left: {far_left_distance:.2f} m | '
-            f'Left: {left_distance:.2f} m | '
-            f'Front: {front_distance:.2f} m | '
-            f'Right: {right_distance:.2f} m | '
-            f'Far Right: {far_right_distance:.2f} m'
-        )
+        # self.get_logger().info(
+        #     f'Far Left: {far_left_distance:.2f} m | '
+        #     f'Left: {left_distance:.2f} m | '
+        #     f'Front: {front_distance:.2f} m | '
+        #     f'Right: {right_distance:.2f} m | '
+        #     f'Far Right: {far_right_distance:.2f} m'
+        # )
 
         # Create movement command
         command = TwistStamped()
-
         command.header.stamp = self.get_clock().now().to_msg()
 
         if front_distance < self.emergency_distance:
@@ -202,22 +200,26 @@ class ObstacleAvoidanceNode(Node):
 
             if(front_distance < self.safe_distance):
 
+
+                self.get_logger().info(
+                    f'Front distance: {front_distance:.2f} m'
+                )
                 best_angle = self.evaluate_trajectories(msg)
 
-                if(best_angle is not None and best_angle != 0.0):
+                if(best_angle is not None):
+                    
+                    self.get_logger().info(
+                        f'Best angle: {math.degrees(best_angle):.2f} degrees'
+                    )
 
-                    self.turn_direction = self.angle_to_turn_direction(best_angle)
-                
-                elif(best_angle == 0.0):
+                    self.turn_direction = self.steering_gain * best_angle
+                    self.current_state = self.TURNING
 
-                    self.current_state = self.FORWARD
-                    self.turn_direction = 0.0
-                
                 else:
 
                     self.current_state = self.EMERGENCY_STOP
-                
-                self.current_state = self.TURNING
+                    self.turn_direction = 0.0
+                    self.get_logger().warn('No safe trajectory found!')
 
         elif(self.current_state == self.TURNING):
 
@@ -233,8 +235,9 @@ class ObstacleAvoidanceNode(Node):
 
         elif(self.current_state == self.TURNING):
 
-            command.twist.linear.x = self.forward_speed *0.3
-            command.twist.angular.z = self.turn_direction *self.turn_speed
+            command.twist.linear.x = self.forward_speed * 0.3
+
+            command.twist.angular.z = max(-self.turn_speed, min(self.turn_speed, self.turn_direction))
 
         else:
 
